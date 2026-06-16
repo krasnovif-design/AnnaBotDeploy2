@@ -23,7 +23,6 @@ if not TELEGRAM_TOKEN or not OPENAI_API_KEY:
 
 MAX_HISTORY = 1000
 
-# НОВЫЙ КЛИЕНТ (поддерживает responses.create)
 client = AsyncOpenAI(api_key=OPENAI_API_KEY)
 
 # ========== ПАМЯТЬ ==========
@@ -99,7 +98,7 @@ class ReminderManager:
 
 reminder = ReminderManager()
 
-# ========== ОБНОВЛЁННЫЙ ПРОМПТ (АННА НЕ БОИТСЯ ТЕМ О ПСИХИЧЕСКИХ РАССТРОЙСТВАХ) ==========
+# ========== ПРОМПТ ==========
 SYSTEM_PROMPT = """Ты — Анна, 28 лет, психолог. Ты — живой человек, а не робот.
 
 Говори так, как говорит реальная девушка в доверительной беседе:
@@ -283,7 +282,7 @@ async def handle_anxiety(update, context):
         reply_markup=get_keyboard()
     )
 
-# ========== ОСНОВНОЙ ОБРАБОТЧИК (НОВЫЙ API GPT-5.5) ==========
+# ========== ОСНОВНОЙ ОБРАБОТЧИК (рабочий API) ==========
 async def handle_message(update, context):
     logger.info(f"📩 Получено сообщение: {update.message.text}")
 
@@ -316,28 +315,24 @@ async def handle_message(update, context):
     if text.startswith('/'):
         return
 
-    # Сохраняем сообщение пользователя в память
     db.add_message(uid, "user", text, MAX_HISTORY)
     history = db.get_history(uid)
-
-    # Формируем список сообщений для GPT
     messages = [{"role": "system", "content": SYSTEM_PROMPT}] + history
 
     try:
         await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
 
-        # ----- НОВЫЙ API GPT-5.5 (responses.create) -----
-        response = await client.responses.create(
-            model="gpt-5.5",                # новая модель
-            input=messages,                 # массив сообщений
+        # ----- РАБОЧИЙ API -----
+        response = await client.chat.completions.create(
+            model="gpt-4o",                    # актуальная модель
+            messages=messages,
             temperature=1.0,
-            max_output_tokens=500           # новый параметр вместо max_completion_tokens
+            max_completion_tokens=500          # поддерживается
         )
 
-        # Получаем текст ответа
-        reply = response.output_text
+        reply = response.choices[0].message.content
 
-        if not reply:
+        if not reply or reply.strip() == "":
             logger.error("GPT вернул пустой ответ")
             await update.message.reply_text(
                 "⚠️ Кажется, я немного зависла. Попробуй переформулировать вопрос или начни с /start.",
@@ -345,14 +340,13 @@ async def handle_message(update, context):
             )
             return
 
-        # Сохраняем ответ в память
         db.add_message(uid, "assistant", reply, MAX_HISTORY)
         await update.message.reply_text(reply, reply_markup=get_keyboard())
 
     except Exception as e:
         logger.error(f"GPT error: {e}")
         await update.message.reply_text(
-            "⚠️ Ошибка при обращении к GPT. Попробуй позже или напиши /help.",
+            f"⚠️ Ошибка при обращении к GPT: {e}",
             reply_markup=get_keyboard()
         )
 
@@ -378,7 +372,7 @@ def main():
     except Exception as e:
         logger.warning(f"Не удалось сбросить вебхук: {e}")
 
-    logger.info("🌸 Анна запущена (GPT-5.5, улучшенный промпт, обновлённый API)")
+    logger.info("🌸 Анна запущена (gpt-4o, улучшенный промпт)")
     app.run_polling(drop_pending_updates=True)
 
 if __name__ == "__main__":
