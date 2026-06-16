@@ -5,8 +5,6 @@ import os
 import logging
 import sqlite3
 import json
-import tempfile
-import subprocess
 from datetime import datetime, timedelta
 from io import BytesIO
 from telegram import Update, ReplyKeyboardMarkup, InputFile
@@ -14,11 +12,9 @@ from telegram.ext import Application, CommandHandler, MessageHandler, filters, C
 from openai import AsyncOpenAI
 import urllib.request
 
-# ========== ЛОГИРОВАНИЕ ==========
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# ========== ТОКЕНЫ ИЗ ОКРУЖЕНИЯ ==========
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 if not TELEGRAM_TOKEN or not OPENAI_API_KEY:
@@ -27,10 +23,10 @@ if not TELEGRAM_TOKEN or not OPENAI_API_KEY:
 
 MAX_HISTORY = 1000
 
-# ========== КЛИЕНТ ==========
+# НОВЫЙ КЛИЕНТ (поддерживает responses.create)
 client = AsyncOpenAI(api_key=OPENAI_API_KEY)
 
-# ========== ПАМЯТЬ (SQLite) ==========
+# ========== ПАМЯТЬ ==========
 class MemoryDB:
     def __init__(self):
         self.conn = sqlite3.connect("memory.db", check_same_thread=False)
@@ -103,7 +99,7 @@ class ReminderManager:
 
 reminder = ReminderManager()
 
-# ========== ПРОМПТ ==========
+# ========== ОБНОВЛЁННЫЙ ПРОМПТ (АННА НЕ БОИТСЯ ТЕМ О ПСИХИЧЕСКИХ РАССТРОЙСТВАХ) ==========
 SYSTEM_PROMPT = """Ты — Анна, 28 лет, психолог. Ты — живой человек, а не робот.
 
 Говори так, как говорит реальная девушка в доверительной беседе:
@@ -126,11 +122,15 @@ SYSTEM_PROMPT = """Ты — Анна, 28 лет, психолог. Ты — жи
 - Предлагать простые КПТ-техники: например, «давай попробуем записать автоматические мысли», «проверим доказательства за и против», «попробуем технику заземления 5-4-3-2-1».
 - Использовать гештальт-подход: обращать внимание на текущие ощущения, задавать вопросы «что ты чувствуешь сейчас в теле?», «что происходит в настоящем моменте?».
 
-Твои рекомендации должны быть уместными и естественно вплетёнными в беседу, а не навязчивыми.
+Ты НЕ боишься тем о психических расстройствах (биполярное расстройство, депрессия, тревога, паника и другие). Если человек упоминает такие состояния, ты:
+- В первую очередь даёшь эмоциональную поддержку, нормализуешь чувства человека.
+- Помогаешь снять напряжение: предлагаешь дыхательные упражнения, заземление, переключение внимания.
+- Мягко напоминаешь, что ты не заменяешь психиатра, но можешь быть ресурсом в данный момент.
+- Никогда не избегаешь темы и не проявляешь страха.
 
-Ты не заменяешь профессионального психолога, но можешь быть первым шагом к самоподдержке."""
+Ты не заменяешь профессионального психолога или психиатра, но можешь быть первым шагом к самоподдержке и источником заботы в кризисный момент."""
 
-# ========== РАЗВЁРНУТЫЕ УПРАЖНЕНИЯ ==========
+# ========== УПРАЖНЕНИЯ ==========
 EXERCISE_THOUGHT_DIARY = """📝 **Дневник мыслей (КПТ)**
 
 👉 **Как выполнять:**
@@ -140,9 +140,7 @@ EXERCISE_THOUGHT_DIARY = """📝 **Дневник мыслей (КПТ)**
 4. **Доказательства ЗА** – факты, подтверждающие мысль.
 5. **Доказательства ПРОТИВ** – факты против.
 6. **Альтернативный взгляд** – как посмотреть иначе?
-7. **Новая эмоция** – оцени снова (0–10).
-
-💡 Пиши честно, не торопясь. Это помогает снизить влияние иррациональных мыслей."""
+7. **Новая эмоция** – оцени снова (0–10)."""
 
 EXERCISE_GROUNDING = """🌱 **Техника заземления «5-4-3-2-1»**
 
@@ -151,17 +149,14 @@ EXERCISE_GROUNDING = """🌱 **Техника заземления «5-4-3-2-1»
 2. **4** – ощути 4 тактильных ощущения.
 3. **3** – услышь 3 звука.
 4. **2** – почувствуй 2 запаха.
-5. **1** – сделай 1 глубокий вдох и выдох.
+5. **1** – сделай 1 глубокий вдох и выдох."""
 
-✅ После упражнения: ты здесь и сейчас. Тревога – это просто мысли, она не управляет тобой."""
-
-# ========== КЛАВИАТУРА (ВСЕГДА ВИДНА) ==========
+# ========== КЛАВИАТУРА ==========
 def get_keyboard():
     return ReplyKeyboardMarkup([
         ["💝 Сказать Анне спасибо", "📋 Главное меню"]
     ], resize_keyboard=True)
 
-# ========== КОМАНДЫ ==========
 async def start(update, context):
     logger.info("Команда /start")
     await update.message.reply_text(
@@ -176,7 +171,8 @@ async def start(update, context):
         "/remind_on – включить напоминания\n"
         "/clear – очистить историю\n"
         "/help – помощь\n\n"
-        "Также ты можешь написать мне «У меня тревога, что делать?» – и я предложу упражнение.",
+        "Также ты можешь написать мне «У меня тревога, что делать?» – и я предложу упражнение.\n\n"
+        "💚 Я не боюсь говорить о психическом здоровье. Ты можешь говорить со мной о чём угодно.",
         reply_markup=get_keyboard()
     )
 
@@ -205,7 +201,7 @@ async def mood_start(update, context):
     context.user_data["mood_step"] = "score"
     await update.message.reply_text(
         "📝 Оцени своё состояние от 1 до 10 (1 – очень плохо, 10 – прекрасно).\nНапиши просто цифру.",
-        reply_markup=get_keyboard()   # <-- клавиатура остаётся
+        reply_markup=get_keyboard()
     )
 
 async def handle_mood(update, context):
@@ -257,14 +253,12 @@ async def show_chart(update, context):
     else:
         await update.message.reply_text("Нет записей. Начни с /mood.", reply_markup=get_keyboard())
 
-# ========== УПРАЖНЕНИЯ ==========
 async def thought_diary(update, context):
     await update.message.reply_text(EXERCISE_THOUGHT_DIARY, parse_mode="Markdown", reply_markup=get_keyboard())
 
 async def grounding(update, context):
     await update.message.reply_text(EXERCISE_GROUNDING, parse_mode="Markdown", reply_markup=get_keyboard())
 
-# ========== НАПОМИНАНИЯ ==========
 async def remind_on(update, context):
     reminder.enable(update.effective_user.id)
     await update.message.reply_text("🔔 Напоминания включены! Каждый понедельник в 19:00 я буду присылать тёплые слова 💚", reply_markup=get_keyboard())
@@ -273,7 +267,6 @@ async def remind_off(update, context):
     reminder.disable(update.effective_user.id)
     await update.message.reply_text("🔕 Напоминания выключены.", reply_markup=get_keyboard())
 
-# ========== ОБРАБОТКА ТРЕВОГИ ==========
 async def handle_anxiety(update, context):
     await update.message.reply_text(
         "🌿 **Тревога — это нормальная реакция на стресс.**\n\n"
@@ -290,7 +283,7 @@ async def handle_anxiety(update, context):
         reply_markup=get_keyboard()
     )
 
-# ========== ОСНОВНОЙ ОБРАБОТЧИК ==========
+# ========== ОСНОВНОЙ ОБРАБОТЧИК (НОВЫЙ API GPT-5.5) ==========
 async def handle_message(update, context):
     logger.info(f"📩 Получено сообщение: {update.message.text}")
 
@@ -300,7 +293,6 @@ async def handle_message(update, context):
     text = update.message.text
     uid = update.effective_user.id
 
-    # ----- КНОПКИ -----
     if text == "💝 Сказать Анне спасибо":
         await update.message.reply_text(
             "🌷 **Спасибо, что вы со мной!**\n\n"
@@ -317,34 +309,52 @@ async def handle_message(update, context):
         await help_command(update, context)
         return
 
-    # Триггер на тревогу
     if "тревога" in text.lower() and "что делать" in text.lower():
         await handle_anxiety(update, context)
         return
 
-    # Если это команда – не обрабатываем
     if text.startswith('/'):
         return
 
-    # Обычный текст -> GPT
+    # Сохраняем сообщение пользователя в память
     db.add_message(uid, "user", text, MAX_HISTORY)
     history = db.get_history(uid)
+
+    # Формируем список сообщений для GPT
     messages = [{"role": "system", "content": SYSTEM_PROMPT}] + history
 
     try:
         await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
-        response = await client.chat.completions.create(
-            model="gpt-5",
-            messages=messages,
+
+        # ----- НОВЫЙ API GPT-5.5 (responses.create) -----
+        response = await client.responses.create(
+            model="gpt-5.5",                # новая модель
+            input=messages,                 # массив сообщений
             temperature=1.0,
-            max_completion_tokens=500
+            max_output_tokens=500           # новый параметр вместо max_completion_tokens
         )
-        reply = response.choices[0].message.content
+
+        # Получаем текст ответа
+        reply = response.output_text
+
+        if not reply:
+            logger.error("GPT вернул пустой ответ")
+            await update.message.reply_text(
+                "⚠️ Кажется, я немного зависла. Попробуй переформулировать вопрос или начни с /start.",
+                reply_markup=get_keyboard()
+            )
+            return
+
+        # Сохраняем ответ в память
         db.add_message(uid, "assistant", reply, MAX_HISTORY)
         await update.message.reply_text(reply, reply_markup=get_keyboard())
+
     except Exception as e:
         logger.error(f"GPT error: {e}")
-        await update.message.reply_text("Мне нужно отойти, но я скоро вернусь, напиши через 5 минут", reply_markup=get_keyboard())
+        await update.message.reply_text(
+            "⚠️ Ошибка при обращении к GPT. Попробуй позже или напиши /help.",
+            reply_markup=get_keyboard()
+        )
 
 # ========== ЗАПУСК ==========
 def main():
@@ -362,14 +372,13 @@ def main():
 
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
-    # Сброс вебхука (чтобы избежать конфликтов)
     try:
         urllib.request.urlopen(f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/setWebhook?url=")
         logger.info("✅ Вебхук сброшен")
     except Exception as e:
         logger.warning(f"Не удалось сбросить вебхук: {e}")
 
-    logger.info("🌸 Анна запущена (полная версия, кнопки всегда видны)")
+    logger.info("🌸 Анна запущена (GPT-5.5, улучшенный промпт, обновлённый API)")
     app.run_polling(drop_pending_updates=True)
 
 if __name__ == "__main__":
