@@ -76,7 +76,6 @@ QUOTES = [
     ("«Страх — это сигнал, а не приговор.»", "Сьюзан Джефферс"),
     ("«Ты не можешь остановить волны, но можешь научиться на них плавать.»", "Джон Кабат-Зинн"),
     ("«Мужество — это не отсутствие страха, а способность действовать, несмотря на страх.»", "Нельсон Мандела"),
-    # ... добавьте остальные до 365
 ]
 
 # ========== ТЕХНИКИ КПТ (полные описания) ==========
@@ -531,7 +530,7 @@ def get_base_keyboard():
 def get_full_keyboard():
     return ReplyKeyboardMarkup([
         ["🧠 Тест на депрессию", "📜 Цитата дня"],
-        ["🌱 Заземление", "🧠 Техники КПТ"],
+        ["🌱 Заземление", "🧠 КПТ практика на сегодня"],
         ["🔔 Включить напоминания", "🔕 Выключить напоминания"],
         ["🗑️ Очистить историю", "ℹ️ Об Анне"],
         ["🔙 Назад"]
@@ -550,7 +549,6 @@ async def start(update, context):
     )
 
 async def about_anna(update, context):
-    """Информация о боте Анна"""
     await update.message.reply_text(
         "ℹ️ **Об Анне**\n\n"
         "Меня разработали специально для поддержки людей в трудные моменты. Я не храню информацию — всё, что ты пишешь, доступно только тебе и мне в рамках нашего диалога. Когда ты нажимаешь кнопку «🗑️ Очистить историю», я полностью забываю всё, что мы обсуждали.\n\n"
@@ -632,24 +630,15 @@ async def handle_beck_result(update, context):
     db.add_message(uid, "assistant", response, MAX_HISTORY)
     return True
 
-# ---------- ТЕХНИКИ КПТ ----------
-async def show_cbt_techniques(update, context):
-    text = "🧠 **Техники КПТ – полный список**\n\nВыбери технику и напиши её команду, чтобы получить подробное описание:\n\n"
-    for key, tech in TECHNIQUES.items():
-        text += f"`/tech_{key}` – {tech['name']}\n"
-    text += "\nНапиши команду, чтобы получить подробное описание техники. Например: `/tech_thought_record`"
-    await update.message.reply_text(text, parse_mode="Markdown", reply_markup=get_full_keyboard())
-
-async def handle_tech_command(update, context):
-    text = update.message.text.strip()
-    if not text.startswith('/tech_'):
-        return False
-    tech_id = text[6:]  # убираем '/tech_'
-    if tech_id in TECHNIQUES:
-        await update.message.reply_text(TECHNIQUES[tech_id]["full"], parse_mode="Markdown", reply_markup=get_full_keyboard())
-    else:
-        await update.message.reply_text("❌ Техника с таким именем не найдена. Проверь команду.", reply_markup=get_full_keyboard())
-    return True
+# ---------- КПТ ПРАКТИКА НА СЕГОДНЯ (СЛУЧАЙНАЯ ТЕХНИКА) ----------
+async def random_cbt_technique(update, context):
+    """Отправляет случайную технику КПТ из списка"""
+    tech_list = list(TECHNIQUES.values())
+    if not tech_list:
+        await update.message.reply_text("⚠️ Список техник временно недоступен. Попробуй позже.", reply_markup=get_full_keyboard())
+        return
+    tech = random.choice(tech_list)
+    await update.message.reply_text(tech["full"], parse_mode="Markdown", reply_markup=get_full_keyboard())
 
 # ---------- ЦИТАТА ----------
 async def quote_command(update, context):
@@ -698,10 +687,6 @@ async def handle_message(update, context):
     if await handle_beck_result(update, context):
         return
 
-    # Проверяем команды техник
-    if await handle_tech_command(update, context):
-        return
-
     text = update.message.text
     uid = update.effective_user.id
 
@@ -738,8 +723,8 @@ async def handle_message(update, context):
         await grounding(update, context)
         return
 
-    if text == "🧠 Техники КПТ":
-        await show_cbt_techniques(update, context)
+    if text == "🧠 КПТ практика на сегодня":
+        await random_cbt_technique(update, context)
         return
 
     if text == "🔔 Включить напоминания":
@@ -832,11 +817,10 @@ def main():
     app.add_handler(CommandHandler("beck", beck_test))
     app.add_handler(CommandHandler("quote", quote_command))
     app.add_handler(CommandHandler("grounding", grounding))
-    app.add_handler(CommandHandler("cbt_techniques", show_cbt_techniques))
     app.add_handler(CommandHandler("remind_on", remind_on))
     app.add_handler(CommandHandler("remind_off", remind_off))
 
-    # Убираем ~filters.COMMAND, чтобы /tech_* попадали в обработчик
+    # Убираем ~filters.COMMAND, чтобы все текстовые сообщения попадали в обработчик
     app.add_handler(MessageHandler(filters.TEXT, handle_message))
 
     try:
@@ -845,12 +829,11 @@ def main():
     except Exception as e:
         logger.warning(f"Не удалось сбросить вебхук: {e}")
 
-    # Планировщик напоминаний (каждую минуту проверяем время)
     scheduler = AsyncIOScheduler(timezone=pytz.timezone('Europe/Moscow'))
     scheduler.add_job(send_weekly_reminder, CronTrigger(minute="*"), args=[app])
     scheduler.start()
 
-    logger.info("🌸 Анна запущена (полная версия, все функции)")
+    logger.info("🌸 Анна запущена (полная версия, КПТ практика на сегодня)")
     app.run_polling(drop_pending_updates=True)
 
 if __name__ == "__main__":
