@@ -64,7 +64,7 @@ class ReminderManager:
 
 reminder = ReminderManager()
 
-# ========== ЦИТАТЫ (можно расширить до 365) ==========
+# ========== ЦИТАТЫ ==========
 QUOTES = [
     ("«Только приняв себя таким, какой я есть, я могу измениться.»", "Карл Роджерс"),
     ("«Смысл жизни — найти себя; цель жизни — потерять страх быть собой.»", "Виктор Франкл"),
@@ -76,9 +76,14 @@ QUOTES = [
     ("«Страх — это сигнал, а не приговор.»", "Сьюзан Джефферс"),
     ("«Ты не можешь остановить волны, но можешь научиться на них плавать.»", "Джон Кабат-Зинн"),
     ("«Мужество — это не отсутствие страха, а способность действовать, несмотря на страх.»", "Нельсон Мандела"),
+    ("«Смысл жизни — это то, что мы сами в неё вкладываем.»", "Виктор Франкл"),
+    ("«Каждый из нас — это то, что он думает.»", "Будда"),
+    ("«Если ты не любишь себя, ты не можешь любить других.»", "Фридрих Ницше"),
+    ("«Горе — это не слабость, а доказательство того, что ты любил.»", "К.С. Льюис"),
+    ("«Ты не обязан быть идеальным, чтобы быть достойным любви.»", "Маршалл Розенберг"),
 ]
 
-# ========== ТЕХНИКИ КПТ (полные описания) ==========
+# ========== ТЕХНИКИ КПТ ==========
 TECHNIQUES = {
     "thought_record": {
         "name": "Дневник автоматических мыслей",
@@ -448,7 +453,7 @@ TECHNIQUES = {
 5. **1** – сделай 1 глубокий вдох и выдох.
 
 💡 **Эффект:** Быстрое возвращение в «здесь и сейчас», снижение тревоги."""
-    },
+    }
 }
 
 # ========== ПРОМПТ ==========
@@ -541,8 +546,10 @@ async def start(update, context):
     logger.info("Команда /start")
     await update.message.reply_text(
         "🌸 **Привет! Я Анна, твоя поддержка в трудную минуту.**\n\n"
-        "Просто напиши мне, что тебя беспокоит, и мы это обсудим. Я не даю советов, я помогаю найти твои собственные ответы.\n\n"
-        "Всегда можно нажать кнопку «📋 Главное меню» для просмотра дополнительных функций. А если захочешь сказать спасибо – кнопка «💝 Сказать Анне спасибо».\n\n"
+        "Давай познакомимся. Как тебя зовут? Что привело тебя сюда сегодня?\n"
+        "Ты можешь писать в свободной форме — я слушаю без осуждения.\n\n"
+        "Всегда можно нажать кнопку «📋 Главное меню» для просмотра дополнительных функций.\n"
+        "А если захочешь сказать спасибо – кнопка «💝 Сказать Анне спасибо».\n\n"
         "Я здесь, чтобы быть рядом. 💚",
         parse_mode="Markdown",
         reply_markup=get_base_keyboard()
@@ -630,9 +637,8 @@ async def handle_beck_result(update, context):
     db.add_message(uid, "assistant", response, MAX_HISTORY)
     return True
 
-# ---------- КПТ ПРАКТИКА НА СЕГОДНЯ (СЛУЧАЙНАЯ ТЕХНИКА) ----------
+# ---------- КПТ ПРАКТИКА НА СЕГОДНЯ ----------
 async def random_cbt_technique(update, context):
-    """Отправляет случайную технику КПТ из списка"""
     tech_list = list(TECHNIQUES.values())
     if not tech_list:
         await update.message.reply_text("⚠️ Список техник временно недоступен. Попробуй позже.", reply_markup=get_full_keyboard())
@@ -683,7 +689,6 @@ async def handle_anxiety(update, context):
 async def handle_message(update, context):
     logger.info(f"📩 Получено сообщение: {update.message.text}")
 
-    # Проверяем результат теста Бэкка
     if await handle_beck_result(update, context):
         return
 
@@ -747,11 +752,9 @@ async def handle_message(update, context):
         await handle_anxiety(update, context)
         return
 
-    # Если текст начинается с '/', но это не стандартная команда – пропускаем
     if text.startswith('/'):
         return
 
-    # Обычный текст -> GPT
     db.add_message(uid, "user", text, MAX_HISTORY)
     history = db.get_history(uid)
     messages = [{"role": "system", "content": SYSTEM_PROMPT}] + history
@@ -779,17 +782,17 @@ async def handle_message(update, context):
         logger.error(f"GPT error: {e}")
 
         if "timeout" in error_msg or "connection" in error_msg or "network" in error_msg:
-            text = "Мне нужно отойти на 5 минут, напиши чуть позже. 💚"
+            error_text = "Мне нужно отойти на 5 минут, напиши чуть позже. 💚"
         elif "rate_limit" in error_msg or "quota" in error_msg or "exceeded" in error_msg:
-            text = "Что-то пошло не так с моим подключением... Попробуй ещё раз через пару минут. 🌸"
+            error_text = "Что-то пошло не так с моим подключением... Попробуй ещё раз через пару минут. 🌸"
         elif "api_key" in error_msg or "authentication" in error_msg or "permission" in error_msg:
-            text = "У меня проблемы с доступом к серверу. Пожалуйста, сообщи об этом разработчику. 🙈"
+            error_text = "У меня проблемы с доступом к серверу. Пожалуйста, сообщи об этом разработчику. 🙈"
         elif "model" in error_msg and "not found" in error_msg:
-            text = "Я временно не могу использовать мою самую новую модель. Попробуй позже, я переключусь на резервную. 🧠"
+            error_text = "Я временно не могу использовать мою самую новую модель. Попробуй позже, я переключусь на резервную. 🧠"
         else:
-            text = "Что-то пошло не так. Попробуй ещё раз или напиши /help. 🌷"
+            error_text = "Что-то пошло не так. Попробуй ещё раз или напиши /help. 🌷"
 
-        await update.message.reply_text(text, reply_markup=get_base_keyboard())
+        await update.message.reply_text(error_text, reply_markup=get_base_keyboard())
 
 # ---------- ПЛАНИРОВЩИК НАПОМИНАНИЙ ----------
 async def send_weekly_reminder(app):
@@ -820,7 +823,6 @@ def main():
     app.add_handler(CommandHandler("remind_on", remind_on))
     app.add_handler(CommandHandler("remind_off", remind_off))
 
-    # Убираем ~filters.COMMAND, чтобы все текстовые сообщения попадали в обработчик
     app.add_handler(MessageHandler(filters.TEXT, handle_message))
 
     try:
@@ -833,7 +835,7 @@ def main():
     scheduler.add_job(send_weekly_reminder, CronTrigger(minute="*"), args=[app])
     scheduler.start()
 
-    logger.info("🌸 Анна запущена (полная версия, КПТ практика на сегодня)")
+    logger.info("🌸 Анна запущена (без голосовых, с новым приветствием)")
     app.run_polling(drop_pending_updates=True)
 
 if __name__ == "__main__":
