@@ -25,7 +25,7 @@ if not TELEGRAM_TOKEN or not OPENAI_API_KEY:
     logger.error("❌ Переменные TELEGRAM_TOKEN или OPENAI_API_KEY не заданы!")
     exit(1)
 
-MAX_HISTORY = 1000
+MAX_HISTORY = 50  # <-- ИЗМЕНЕНО НА 50
 client = AsyncOpenAI(api_key=OPENAI_API_KEY)
 
 # ========== ПАМЯТЬ ==========
@@ -36,7 +36,7 @@ class MemoryDB:
     def get_history(self, uid):
         r = self.conn.execute("SELECT history FROM user_memory WHERE user_id=?", (uid,)).fetchone()
         return json.loads(r[0]) if r else []
-    def add_message(self, uid, role, content, max_h=1000):
+    def add_message(self, uid, role, content, max_h=50):  # <-- ЗНАЧЕНИЕ ПО УМОЛЧАНИЮ ТОЖЕ 50
         h = self.get_history(uid)
         h.append({"role": role, "content": content})
         if len(h) > max_h: h = h[-max_h:]
@@ -835,7 +835,7 @@ def main():
     scheduler.add_job(send_weekly_reminder, CronTrigger(minute="*"), args=[app])
     scheduler.start()
 
-    logger.info("🌸 Анна запущена (без голосовых, с новым приветствием)")
+    logger.info("🌸 Анна запущена (память 50, без голосовых, новое приветствие)")
     app.run_polling(drop_pending_updates=True)
 
 if __name__ == "__main__":
