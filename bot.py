@@ -1,29 +1,35 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+
 import os
 import logging
-
-# ---- ПРЯМОЕ ЧТЕНИЕ ПЕРЕМЕННЫХ (без .env) ----
-TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN")
-OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
-
-# ---- ПРОВЕРКА ----
-if not TELEGRAM_TOKEN or not OPENAI_API_KEY:
-    logging.error("❌ Переменные TELEGRAM_TOKEN или OPENAI_API_KEY не заданы!")
-    print("❌ TELEGRAM_TOKEN =", TELEGRAM_TOKEN)
-    print("❌ OPENAI_API_KEY =", OPENAI_API_KEY)
-    exit(1)
-
-logging.info("✅ Токены загружены успешно!")
+import sqlite3
+import json
+import random
+import re
+from datetime import datetime, timedelta
+from telegram import Update, ReplyKeyboardMarkup
+from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
+from openai import AsyncOpenAI
+import urllib.request
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
+from apscheduler.triggers.cron import CronTrigger
+import pytz
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+# ---- ЧИТАЕМ ТОКЕНЫ ИЗ ОКРУЖЕНИЯ ----
+TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN")
+OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
+
 if not TELEGRAM_TOKEN or not OPENAI_API_KEY:
     logger.error("❌ Переменные TELEGRAM_TOKEN или OPENAI_API_KEY не заданы!")
     exit(1)
 
-MAX_HISTORY = 50  # <-- ИЗМЕНЕНО НА 50
+logger.info("✅ Токены успешно загружены!")
+
+MAX_HISTORY = 50
 client = AsyncOpenAI(api_key=OPENAI_API_KEY)
 
 # ========== ПАМЯТЬ ==========
@@ -34,7 +40,7 @@ class MemoryDB:
     def get_history(self, uid):
         r = self.conn.execute("SELECT history FROM user_memory WHERE user_id=?", (uid,)).fetchone()
         return json.loads(r[0]) if r else []
-    def add_message(self, uid, role, content, max_h=50):  # <-- ЗНАЧЕНИЕ ПО УМОЛЧАНИЮ ТОЖЕ 50
+    def add_message(self, uid, role, content, max_h=50):
         h = self.get_history(uid)
         h.append({"role": role, "content": content})
         if len(h) > max_h: h = h[-max_h:]
@@ -74,11 +80,6 @@ QUOTES = [
     ("«Страх — это сигнал, а не приговор.»", "Сьюзан Джефферс"),
     ("«Ты не можешь остановить волны, но можешь научиться на них плавать.»", "Джон Кабат-Зинн"),
     ("«Мужество — это не отсутствие страха, а способность действовать, несмотря на страх.»", "Нельсон Мандела"),
-    ("«Смысл жизни — это то, что мы сами в неё вкладываем.»", "Виктор Франкл"),
-    ("«Каждый из нас — это то, что он думает.»", "Будда"),
-    ("«Если ты не любишь себя, ты не можешь любить других.»", "Фридрих Ницше"),
-    ("«Горе — это не слабость, а доказательство того, что ты любил.»", "К.С. Льюис"),
-    ("«Ты не обязан быть идеальным, чтобы быть достойным любви.»", "Маршалл Розенберг"),
 ]
 
 # ========== ТЕХНИКИ КПТ ==========
@@ -630,7 +631,6 @@ async def handle_beck_result(update, context):
 
     await update.message.reply_text(response, parse_mode="Markdown", reply_markup=get_full_keyboard())
 
-    # Сохраняем в память
     db.add_message(uid, "user", text, MAX_HISTORY)
     db.add_message(uid, "assistant", response, MAX_HISTORY)
     return True
@@ -760,7 +760,7 @@ async def handle_message(update, context):
     try:
         await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
         response = await client.chat.completions.create(
-            model="gpt-5.5",
+            model="gpt-4o",
             messages=messages,
             temperature=1.0,
             max_completion_tokens=500
