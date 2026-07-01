@@ -1,20 +1,18 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-
 import os
 import logging
-import sqlite3
-import json
-import random
-import re
-from datetime import datetime, timedelta
-from telegram import Update, ReplyKeyboardMarkup
-from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
-from openai import AsyncOpenAI
-import urllib.request
-from apscheduler.schedulers.asyncio import AsyncIOScheduler
-from apscheduler.triggers.cron import CronTrigger
-import pytz
+
+# ---- ПРЯМОЕ ЧТЕНИЕ ПЕРЕМЕННЫХ (без .env) ----
+TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN")
+OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
+
+# ---- ПРОВЕРКА ----
+if not TELEGRAM_TOKEN or not OPENAI_API_KEY:
+    logging.error("❌ Переменные TELEGRAM_TOKEN или OPENAI_API_KEY не заданы!")
+    print("❌ TELEGRAM_TOKEN =", TELEGRAM_TOKEN)
+    print("❌ OPENAI_API_KEY =", OPENAI_API_KEY)
+    exit(1)
+
+logging.info("✅ Токены загружены успешно!")
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
